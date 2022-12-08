@@ -36,6 +36,13 @@ export class AppComponent implements OnInit {
   public address: any
   public mobilelog: any = {}
   public driverlocation: any;
+  public clientLifeLocation: any[] = [];
+  public isActiveSearch: boolean = false;
+  public drivers: any = []
+  public driversData: any
+  public currentDriverPlace:any;
+  public fff:any
+  public life:any[]=[]
   constructor(
     private _appService: AppService
   ) {
@@ -44,35 +51,32 @@ export class AppComponent implements OnInit {
   }
 
   public ngOnInit(): void {
+    ymaps.ready(this._inItYandexMap)
     this.lifeGeoLocation();
     this.watchPosition();
+    this.watchDriverPosition()
     this.socketConnectionOnMessage();
-
-    ymaps.ready(this._inItYandexMap)
 
   }
 
   public socketConnectionOnMessage(): void {
-    if(this.socket) return;
+    if (this.socket) return;
     this.socket = io("ws://localhost:80");
     this.socket.on("onMessage", (arg: any) => {
-      console.log(arg.content.driverstartLocation, 'dfgdfddfgdfgd')
-      this.driverlocation = arg.content.driverstartLocation
-      const latitude = arg.content.driverstartLocation[0].latitude;
-      const longitude = arg.content.driverstartLocation[0].longitude;
-      this._placemarkDriver([latitude, longitude])
+      if (this.isActiveSearch) {
+        console.log(arg);
+        this.driverlocation = arg.content.driverstartLocation
+        const latitude = arg?.content?.driverstartLocation[0].latitude;
+        const longitude = arg?.content?.driverstartLocation[0].longitude;
+        this._placemarkDriver([latitude, longitude])
+      }
     })
   }
 
-
   public watchDriverPosition(): void {
-    console.log(this.driverlocation, "22");
-
     let desLat = 0;
     let desLot = 0;
-    let id = navigator.geolocation.watchPosition((driverlocation) => {
-      console.log(driverlocation, "00000000");
-
+    let id = navigator.geolocation.watchPosition((driverlocation) => {      
       let latitude = driverlocation.coords.latitude
       let longitude = driverlocation.coords.longitude
       this.mobilelog = {
@@ -80,9 +84,12 @@ export class AppComponent implements OnInit {
         longitude: driverlocation.coords.longitude
       }
       let y = [latitude, longitude]
+      this.life=y
+      console.log(y);
+
       if (this.myPlacemark) {
         this.myPlacemark.geometry.setCoordinates(y);
-        ymaps.Placemark(y)
+        ymaps.DriverPlacemark(y)
       } else {
         this.myPlacemark = this._createDriverPlacemark(y);
         this.myMap.setCenter(y);
@@ -108,7 +115,7 @@ export class AppComponent implements OnInit {
     if (!navigator.geolocation) {
       alert("location is not supported")
     }
-    navigator.geolocation.getCurrentPosition((position) => { })
+    navigator.geolocation.getCurrentPosition((position) => {})
   }
 
   public watchPosition(): void {
@@ -117,11 +124,17 @@ export class AppComponent implements OnInit {
     let id = navigator.geolocation.watchPosition((position) => {
       let latitude = position.coords.latitude
       let longitude = position.coords.longitude
+      console.log(latitude,longitude);
+      
       this.mobilelog = {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude
       }
+      
       let y = [latitude, longitude]
+      this.clientLifeLocation = y
+      console.log(this.clientLifeLocation,"clientLifeLocation");
+      
       if (this.myPlacemark) {
         this.myPlacemark.geometry.setCoordinates(y);
         ymaps.Placemark(y)
@@ -160,17 +173,71 @@ export class AppComponent implements OnInit {
       searchControlProvider: 'yandex#search'
     });
     this.control = this.myMap.controls.get('routePanelControl');
-    this.multiRoutePromise = this.control.routePanel.getRouteAsync();
+    // this.multiRoutePromise = this.control.routePanel.getRouteAsync(); // kaput keteric mekne hanum cuyc chi talis
 
-    //Get My current Location BUTTON
+    //Placemark from to 
+    var multiRoutePromise = this.control.routePanel.getRouteAsync();
+    multiRoutePromise.then(function (multiRoute: any) {
+      multiRoute.options.set({
+        wayPointVisible: false,
+      });
+    }, function (err: any) {
+      console.log(err);
+    });
+
+    //ORDER TAXI
+
     var geolocationControl = new ymaps.control.GeolocationControl({
-      data: { content: 'Местоположение клиента', image: 'none' },
-      options: { noPlacemark: true, maxWidth: [30, 100, 250], position: { left: 150, top: 650 } }
+      data: { content: 'Order a Taxi ', image: 'none' },
+      options: { noPlacemark: true, maxWidth: [30, 100, 100], position: { left: 10, top: 650 } }
     });
     this.myMap.controls.add(geolocationControl);
     geolocationControl.events.add('locationchange', (e: any) => {
       let latitude = this.mobilelog.latitude;
       let longitude = this.mobilelog.longitude;
+
+
+      this._addMarker({ latitude, longitude });
+      this.currentlocation = { latitude, longitude }
+      this.myMap.panTo([latitude, longitude]);
+      this.detectMyCurrentPlaceLocaion = e.get('position')
+      ymaps.geocode(this.detectMyCurrentPlaceLocaion).then((res: any) => {
+        this.from = res.geoObjects.get(0).properties._data.text;
+        console.log(this.from);
+
+        this.from_location = {
+          form: this.from,
+          latitude,
+          longitude
+        }
+        // this.gettrip = [...this.gettrip, this.from_location]
+        // this.socket.emit("location", {
+        //   from: {
+        //     form: this.from,
+        //     latitude,
+        //     longitude
+        //   }
+        // })
+        this.control.routePanel.state.set({
+          from: this.from,
+        })
+      })
+
+
+
+
+    })
+
+    //Get My current Location BUTTON
+    var geolocationControl = new ymaps.control.GeolocationControl({
+      data: { content: 'Client place', image: 'none' },
+      options: { noPlacemark: true, maxWidth: [30, 100, 150], position: { left: 120, top: 650 } }
+    });
+    this.myMap.controls.add(geolocationControl);
+    geolocationControl.events.add('locationchange', (e: any) => {
+      let latitude = this.mobilelog.latitude;
+      let longitude = this.mobilelog.longitude;
+
       this._addMarker({ latitude, longitude });
       this.currentlocation = { latitude, longitude }
       this.myMap.panTo([latitude, longitude]);
@@ -199,13 +266,14 @@ export class AppComponent implements OnInit {
     });
 
     var geolocationControl = new ymaps.control.GeolocationControl({
-      data: { content: 'Местоположение водителья', image: 'none' },
-      options: { noPlacemark: true, maxWidth: [30, 100, 250], position: { left: 450, top: 650 } }
+      data: { content: 'Driver place', image: 'none' },
+      options: { noPlacemark: true, maxWidth: [30, 100, 150], position: { left: 240, top: 650 } }
     });
     this.myMap.controls.add(geolocationControl);
     geolocationControl.events.add('locationchange', (e: any) => {
       let latitude = this.mobilelog.latitude;
       let longitude = this.mobilelog.longitude;
+
       this._addMarker({ latitude, longitude });
       this.currentlocation = { latitude, longitude }
       this.myMap.panTo([latitude, longitude]);
@@ -213,22 +281,29 @@ export class AppComponent implements OnInit {
       ymaps.geocode(this.detectMyCurrentPlaceLocaion).then((res: any) => {
         this.from = res.geoObjects.get(0).properties._data.text;
         console.log(this.from);
+
+        // let driversData = {
+        //   type: 'Point',
+        //   coordinates: [40.81414494941479, 43.845233759277335]
+        // }
+
+        this.radius(latitude, longitude, [latitude, longitude])
         this.from_location = {
           form: this.from,
           latitude,
           longitude
         }
-        this._appService.postDriverLifeLocation(this.from_location)
+        // this._appService.postDriverLifeLocation(this.from_location)
         this.gettrip = [...this.gettrip, this.from_location]
         let driverstartLocation = this.gettrip
         setInterval(() => {
-
           this.socket.emit("location", {
             driverstartLocation
           })
           this.watchDriverPosition()
-        }, 1000)
-
+          this.isActiveSearch = true
+        }, 3000)
+        this.isActiveSearch = false
         this.control.routePanel.state.set({
           from: this.from,
         })
@@ -239,7 +314,9 @@ export class AppComponent implements OnInit {
 
     this.myMap.events.add('click', (e: any) => {
       const [latitude, longitude] = e.get('coords');
-      this._placemark(e.get('coords'))
+
+
+      // this._placemark(e.get('coords'))
       ymaps.geocode(e.get('coords')).then((res: any) => {
         this.to = res.geoObjects.get(0).properties._data.text
         this.control.routePanel.state.set({
@@ -251,6 +328,8 @@ export class AppComponent implements OnInit {
           latitude,
           longitude
         }
+        console.log(latitude,
+          longitude);
 
         this.gettrip = [...this.gettrip, this.to_location]
         // this.socket.emit("location", {
@@ -269,7 +348,7 @@ export class AppComponent implements OnInit {
     }
 
     let self = this;
-    this.multiRoutePromise.then(function (multiRoute: any) {
+    this.multiRoutePromise?.then((multiRoute: any) => {
       let distance: any;
       let duration: any;
 
@@ -304,12 +383,7 @@ export class AppComponent implements OnInit {
     }).then((result: any) => {
       var userAddress = result.geoObjects.get(0).properties.get('text');
       var userCoodinates = result.geoObjects.get(0).geometry.getCoordinates();
-      console.log(result);
-      console.log(userAddress);
-      console.log(userCoodinates);
-
       result.geoObjects.options.set('preset', 'islands#blueCircleIcon');
-      console.log(result.geoObjects)
       this.myMap.geoObjects.add(result.geoObjects)
     })
     self.socket.emit("location", {
@@ -318,18 +392,17 @@ export class AppComponent implements OnInit {
   }
 
   private _placemark(coords: any) {
-    this.myPlacemark = new ymaps.Placemark(coords), {
-    }
-    console.log(this.myPlacemark);
+    // this.myPlacemark = new ymaps.Placemark(coords)
+    console.log(coords);
 
-    this.myMap.geoObjects.add(this.myPlacemark)
-    this.currentPlace = coords
+    // this.myMap.geoObjects.add(this.myPlacemark)
+    this.currentPlace = coords    
     var placemark = new ymaps.Placemark(this.currentPlace, {
-      iconCaption: 'searching...'
+      // iconCaption: 'searching...'
     }, {
       draggable: true,
       iconLayout: 'default#imageWithContent',
-      iconImageHref: './assets/img/car.png',
+      iconImageHref: './assets/img/pin.png',
       iconImageSize: [42, 54],
       iconImageOffset: [-20, -50,],
       iconContentOffset: [15, 15],
@@ -340,24 +413,23 @@ export class AppComponent implements OnInit {
   }
 
   private _placemarkDriver(coords: any) {
-    // this.myPlacemark = new ymaps.Placemark(coords),
-    // console.log(this.myPlacemark);
-
-    this.currentPlace = coords
-    var placemark = new ymaps.Placemark(this.currentPlace, {
-      iconCaption: 'searching...'
+    console.log(coords);
+    
+    this.currentDriverPlace = coords
+    var DriverPlacemark = new ymaps.Placemark(this.currentDriverPlace, {
+      
     }, {
       draggable: true,
       iconLayout: 'default#imageWithContent',
-      iconImageHref: './assets/img/pin.png',
-      iconImageSize: [42, 54],
+      iconImageHref: './assets/img/car.png',
+      iconImageSize: [30, 42],
       iconImageOffset: [-20, -50,],
       iconContentOffset: [15, 15],
     })
-    console.log(placemark);
-    this.myMap.geoObjects.add(placemark)
+    console.log(DriverPlacemark);
+    // this.myMap.geoObjects.add(DriverPlacemark)
 
-    return placemark;
+    return DriverPlacemark;
   }
 
   private _addMarker(coordinates: { latitude: number, longitude: number }): void {
@@ -400,5 +472,43 @@ export class AppComponent implements OnInit {
     });
   }
 
+  public radius(latitude: any, longitude: any, coords: any): void {
+    var myCircle = new ymaps.Circle([
+      [latitude, longitude],
+      500
+    ], {
+      draggable: true,
+      fillColor: "#DB709377",
+      strokeColor: "#990066",
+      strokeOpacity: 0.8,
+      strokeWidth: 5
+    })
+    this.myMap.geoObjects.add(myCircle);
+    console.log(coords)
+    this.drivers = [
+      {
+        type: 'Point',
+        coordinates: coords
+      },
+      // {
+      //   type: 'Point',
+      //   coordinates: [40.78755006966454, 43.849932989471405]
+      // },
+      // {
+      //   type: 'Point',
+      //   coordinates: [40.79110639104804, 43.84275405704307]
+      // }
+    ]
+
+    console.log(this.drivers, "555666");
+
+    let objects = ymaps.geoQuery(this.drivers)
+      .addToMap(this.myMap)
+    console.log(objects, "11111111111")
+    //   circle = new ymaps.Circle([[latitude, longitude], 10000], null, { draggable: true });
+    var objectsInsideCircle = objects.searchInside(myCircle);
+    objectsInsideCircle.setOptions('preset', 'islands#redIcon');
+    objects.remove(objectsInsideCircle).setOptions('preset', 'islands#blueIcon')
+  }
 
 }
